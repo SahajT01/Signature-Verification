@@ -92,9 +92,9 @@ for _, row in tqdm(data.iterrows(), total=data.shape[0]):
     distances.append(compute_distance(row))
 
 # Analyzing distances
-max_distance = max(distances)
+avg_distance = sum(distances) / len(distances)
 
-print("Max Distance is ", max_distance)
+print("Avg Distance is ", avg_distance)
 
-def give_max_distance():
-    return max_distance
+def give_avg_distance():
+    return avg_distance
