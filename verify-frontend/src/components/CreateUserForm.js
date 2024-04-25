@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { PhotoIcon } from "@heroicons/react/24/solid";
 
 const CreateUserForm = () => {
+    const [name, setName] = useState("");
+    const [email, setEmail] = useState("");
     const [genuineImagePreview, setGenuineImagePreview] = useState(null);
     const [genuineImageFile, setGenuineImageFile] = useState(null);
 
@@ -13,9 +15,37 @@ const CreateUserForm = () => {
     const handleGenuineFileChange = (event) => {
         const file = event.target.files[0];
         if (file) {
-            setGenuineImagePreview(URL.createObjectURL(file));
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setGenuineImagePreview(reader.result);
+            };
+            reader.readAsDataURL(file);
             setGenuineImageFile(file); // Set the file
         }
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        const formData = {
+            name,
+            email,
+            genuineSignature: genuineImagePreview, // Base64 encoded string
+        };
+
+        const response = await fetch("http://127.0.0.1:5000/create_user", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(formData),
+        });
+        const data = await response.json();
+        console.log(data);
+
+        // reset form
+        setName("");
+        setEmail("");
+        resetGenuineImage();
     };
 
     return (
@@ -33,7 +63,7 @@ const CreateUserForm = () => {
                 </div>
 
                 <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
-                    <form className="space-y-6" action="#" method="POST">
+                    <form className="space-y-6" onSubmit={handleSubmit}>
                         <div>
                             <label className="block text-sm font-medium leading-6 text-gray-900">
                                 Name
@@ -43,6 +73,8 @@ const CreateUserForm = () => {
                                     type="text"
                                     required
                                     className="block w-full rounded-md border-0 p-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -60,6 +92,8 @@ const CreateUserForm = () => {
                                     autoComplete="email"
                                     required
                                     className="block w-full rounded-md border-0 p-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -98,6 +132,7 @@ const CreateUserForm = () => {
                                                     id="genuine-signature"
                                                     name="genuineSignature"
                                                     type="file"
+                                                    accept="image/*" // Accept only image formats
                                                     className="sr-only"
                                                     onChange={
                                                         handleGenuineFileChange
@@ -119,16 +154,6 @@ const CreateUserForm = () => {
                             </button>
                         </div>
                     </form>
-
-                    {/* <p className="mt-10 text-center text-sm text-gray-500">
-                        Not a member?{" "}
-                        <a
-                            href="#"
-                            className="font-semibold leading-6 text-indigo-600 hover:text-indigo-500"
-                        >
-                            Start a 14 day free trial
-                        </a>
-                    </p> */}
                 </div>
             </div>
         </div>
