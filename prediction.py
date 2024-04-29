@@ -68,8 +68,8 @@ def distance_to_similarity(distance, average_distance=20):
     return similarity
 
 # Load and preprocess images
-image1 = load_and_preprocess_image('../21.jpg').unsqueeze(0).to(device)
-image2 = load_and_preprocess_image('../22.jpg').unsqueeze(0).to(device)
+image1 = load_and_preprocess_image('../kg1.jpg').unsqueeze(0).to(device)
+image2 = load_and_preprocess_image('../kg2.jpg').unsqueeze(0).to(device)
 
 # Compute outputs from the model
 output1, output2 = model(image1, image2)
