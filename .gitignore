@@ -5,3 +5,6 @@ verify-frontend/node_modules
 /.idea
 /.DS_Store
 /model.pt
+siamese.png
+best_model.pth
+best_model.pt
