@@ -5,6 +5,7 @@ const Form = () => {
     const [users, setUsers] = useState([]);
     const [selectedUser, setSelectedUser] = useState(null);
     const [genuineImagePreview, setGenuineImagePreview] = useState(null);
+    const [forgedImageFile, setForgedImageFile] = useState(null);
     const [forgedImagePreview, setForgedImagePreview] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -14,7 +15,7 @@ const Form = () => {
             const response = await fetch("http://127.0.0.1:5000/get_users");
             const data = await response.json();
             setUsers(data.data);
-            console.log(users);
+            console.log(data.data);
         };
         fetchUsers();
     }, []);
@@ -32,6 +33,7 @@ const Form = () => {
         const file = event.target.files[0];
         if (file) {
             setForgedImagePreview(URL.createObjectURL(file));
+            setForgedImageFile(file);
         }
     };
 
@@ -39,18 +41,36 @@ const Form = () => {
         event.preventDefault();
         setIsLoading(true);
 
-        // Construct FormData
-        const formData = new FormData();
-        // Append files here, ensure you have references to the file inputs
-        // Example: formData.append('forgedImage', forgedImageFile);
+        // Convert the uploaded forged signature to base64
+        const reader = new FileReader();
+        reader.readAsDataURL(forgedImageFile);
+        reader.onload = async () => {
+            const base64ForgedSignature = reader.result;
 
-        // Submit formData to your backend
-        console.log("Submitting form...");
-
-        // Reset after submission for demonstration
-        setIsLoading(false);
-        setGenuineImagePreview(null);
-        setForgedImagePreview(null);
+            // Send both images to your backend
+            try {
+                console.log(selectedUser);
+                const response = await fetch(
+                    "http://127.0.0.1:5000/verify_signature",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            image1: selectedUser.signature_image, // Genuine image already in base64
+                            image2: base64ForgedSignature, // Forged image converted to base64
+                        }),
+                    }
+                );
+                const result = await response.json();
+                console.log(result); // Handle result here (show verification result to user)
+            } catch (error) {
+                console.error("Error submitting form:", error);
+            } finally {
+                setIsLoading(false);
+                setGenuineImagePreview(null);
+                setForgedImagePreview(null);
+            }
+        };
     };
 
     return (
