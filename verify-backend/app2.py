@@ -326,17 +326,16 @@ def verify_signature():
 
         with torch.no_grad():
             output1, output2, confidence = model(img1_tensor, img2_tensor)
-            # output1_normalized = F.normalize(output1, p=2, dim=1)  # Normalize the output embeddings
-            # output2_normalized = F.normalize(output2, p=2, dim=1)
             confidence = torch.sigmoid(confidence).item()  # Convert output to probability
-            # euclidean_distance = abs(F.cosine_similarity(F.normalize(output1), F.normalize(output2)).item())
             cos_sim = F.cosine_similarity(F.normalize(output1), F.normalize(output2)).item()
-            # euclidean_distance = torch.norm(output1_normalized - output2_normalized, p=2).item()  # Calculate Euclidean distance between normalized embeddings
+            # Ensure similarity is non-negative
+            if cos_sim < 0:
+                cos_sim *= -1
 
         # Define a threshold for classification
         threshold = 0.9  # Adjust based on model behavior and validation
         classification = 'Genuine' if cos_sim > threshold else 'Forged'
-        return jsonify({'similarity': f"{cos_sim:.2f}", 'classification': classification, 'confidence': confidence})
+        return jsonify({'similarity': f"{cos_sim * 100:.2f}%", 'classification': classification, 'confidence': confidence})
 
     except Exception as e:
         return jsonify({'error': 'Failed to process images', 'message': str(e)}), 500
