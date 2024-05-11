@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_cors import cross_origin
 from dotenv import load_dotenv
+import os
 import requests
 import base64
 import os
@@ -16,6 +17,7 @@ from skimage import filters, transform, img_as_ubyte, io, color, img_as_ubyte
 from skimage.io import imread
 from typing import Tuple
 from collections import OrderedDict
+
 
 load_dotenv()
 
@@ -215,13 +217,13 @@ def create_user():
 
     response = requests.post(api_url, json=api_payload, headers=headers)
 
-    # Check if the request to the external API was successful
+    # Check if the request to the external API was successful 
     if response.status_code == 201:
         # Parse the JSON response from the external API
         api_data = response.json()
         return jsonify({"status": "success", "message": "User created successfully!"})
     else:
-        print(f"Failed to send data to external API. Status code: {response.status_code}")
+        print(f"Failed to send data to external API. \n Status code: {response.status_code}")
         return jsonify({
             "status": "error",
             "message": "Failed to send data to external API.",
@@ -279,7 +281,7 @@ def verify_signature():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "Hello, testing."
+    return "Hello, testing..."
 
 if __name__ == '__main__':
     app.run(debug=True)
