@@ -1,6 +1,7 @@
 /venv/
 /.ipynb_checkpoints/
 /sign_data/
+verify-frontend/node_modules
 /.idea
 /.DS_Store
 /model.pt
