@@ -256,7 +256,7 @@ class SiameseModel(nn.Module):
 # Load your trained model
 model = SiameseModel()
 # model.load_state_dict(torch.load("signet.pth", map_location='cpu'))  # Adjust the path as necessary
-# model.load_state_dict(torch.load('best_model_21.pt')['model'])
+model.load_state_dict(torch.load('best_model_21.pt')['model'])
 model.eval()
 model.to('cpu')
 
