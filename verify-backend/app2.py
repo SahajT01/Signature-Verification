@@ -12,150 +12,121 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 from typing import Tuple
+import matplotlib.pyplot as plt
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-def normalize_image(img: np.ndarray,
-                    canvas_size: Tuple[int, int] = (840, 1360)) -> np.ndarray:
-     # 1) Crop the image before getting the center of mass
+def preprocess_signature(image: np.ndarray, canvas_dim: Tuple[int, int],
+                         image_dim: Tuple[int, int] = (170, 242),
+                         final_dim: Tuple[int, int] = (150, 220)) -> np.ndarray:
+    image = image.astype(np.uint8)
+    centered_image = adjust_image(image, canvas_dim)
+    inverted_image = 255 - centered_image
+    resized_image = scale_image(inverted_image, image_dim)
 
-    # Apply a gaussian filter on the image to remove small components
-    # Note: this is only used to define the limits to crop the image
-    blur_radius = 2
-    blurred_image = filters.gaussian(img, blur_radius, preserve_range=True)
-
-    # Binarize the image using OTSU's algorithm. This is used to find the center
-    # of mass of the image, and find the threshold to remove background noise
-    threshold = filters.threshold_otsu(img)
-
-    # Find the center of mass
-    binarized_image = blurred_image > threshold
-    r, c = np.where(binarized_image == 0)
-    r_center = int(r.mean() - r.min())
-    c_center = int(c.mean() - c.min())
-
-    # Crop the image with a tight box
-    cropped = img[r.min(): r.max(), c.min(): c.max()]
-    
-     # 2) Center the image
-    img_rows, img_cols = cropped.shape
-    max_rows, max_cols = canvas_size
-
-    r_start = max_rows // 2 - r_center
-    c_start = max_cols // 2 - c_center
-
-    # Make sure the new image does not go off bounds
-    # Emit a warning if the image needs to be cropped, since we don't want this
-    # for most cases (may be ok for feature learning, so we don't raise an error)
-    if img_rows > max_rows:
-        # Case 1: image larger than required (height):  Crop.
-        print('Warning: cropping image. The signature should be smaller than the canvas size')
-        r_start = 0
-        difference = img_rows - max_rows
-        crop_start = difference // 2
-        cropped = cropped[crop_start:crop_start + max_rows, :]
-        img_rows = max_rows
+    if final_dim is not None and final_dim != image_dim:
+        final_image = center_crop(resized_image, final_dim)
     else:
-        extra_r = (r_start + img_rows) - max_rows
-        # Case 2: centering exactly would require a larger image. relax the centering of the image
-        if extra_r > 0:
-            r_start -= extra_r
-        if r_start < 0:
-            r_start = 0
+        final_image = resized_image
 
-    if img_cols > max_cols:
-        # Case 3: image larger than required (width). Crop.
-        print('Warning: cropping image. The signature should be smaller than the canvas size')
-        c_start = 0
-        difference = img_cols - max_cols
-        crop_start = difference // 2
-        cropped = cropped[:, crop_start:crop_start + max_cols]
-        img_cols = max_cols
+    return final_image
+
+def adjust_image(image: np.ndarray, canvas_dim: Tuple[int, int] = (840, 1360)) -> np.ndarray:
+    blur_amount = 2
+    blurred_image = filters.gaussian(image, blur_amount, preserve_range=True)
+    threshold_value = filters.threshold_otsu(image)
+
+    # Calculate the center of mass (CoM)
+    binary_image = blurred_image > threshold_value
+    rows, cols = np.where(binary_image == 0)
+    row_center = int(rows.mean() - rows.min())
+    col_center = int(cols.mean() - cols.min())
+
+    cropped_image = image[rows.min(): rows.max(), cols.min(): cols.max()]
+    img_rows, img_cols = cropped_image.shape
+    canvas_rows, canvas_cols = canvas_dim
+
+    row_start = canvas_rows // 2 - row_center
+    col_start = canvas_cols // 2 - col_center
+
+    if img_rows > canvas_rows:
+        row_start = 0
+        excess_rows = img_rows - canvas_rows
+        crop_start = excess_rows // 2
+        cropped_image = cropped_image[crop_start:crop_start + canvas_rows, :]
+        img_rows = canvas_rows
     else:
-        # Case 4: centering exactly would require a larger image. relax the centering of the image
-        extra_c = (c_start + img_cols) - max_cols
-        if extra_c > 0:
-            c_start -= extra_c
-        if c_start < 0:
-            c_start = 0
+        extra_rows = (row_start + img_rows) - canvas_rows
+        if extra_rows > 0:
+            row_start -= extra_rows
+        if row_start < 0:
+            row_start = 0
 
-    normalized_image = np.ones((max_rows, max_cols), dtype=np.uint8) * 255
-    # Add the image to the blank canvas
-    normalized_image[r_start:r_start + img_rows, c_start:c_start + img_cols] = cropped
+    if img_cols > canvas_cols:
+        col_start = 0
+        excess_cols = img_cols - canvas_cols
+        crop_start = excess_cols // 2
+        cropped_image = cropped_image[:, crop_start:crop_start + canvas_cols]
+        img_cols = canvas_cols
+    else:
+        extra_cols = (col_start + img_cols) - canvas_cols
+        if extra_cols > 0:
+            col_start -= extra_cols
+        if col_start < 0:
+            col_start = 0
 
-    # Remove noise - anything higher than the threshold. Note that the image is still grayscale
-    normalized_image[normalized_image > threshold] = 255
+    normalized_image = np.ones((canvas_rows, canvas_cols), dtype=np.uint8) * 255
+    normalized_image[row_start:row_start + img_rows, col_start:col_start + img_cols] = cropped_image
+    normalized_image[normalized_image > threshold_value] = 255
 
     return normalized_image
 
-def resize_image(img: np.ndarray,
-                 size: Tuple[int, int]) -> np.ndarray:
-    height, width = size
-
-    # Check which dimension needs to be cropped
-    # (assuming the new height-width ratio may not match the original size)
-    width_ratio = float(img.shape[1]) / width
-    height_ratio = float(img.shape[0]) / height
+def scale_image(image: np.ndarray, dimensions: Tuple[int, int]) -> np.ndarray:
+    target_height, target_width = dimensions
+    height_ratio = float(image.shape[0]) / target_height
+    width_ratio = float(image.shape[1]) / target_width
     if width_ratio > height_ratio:
-        resize_height = height
-        resize_width = int(round(img.shape[1] / height_ratio))
+        new_height = target_height
+        new_width = int(round(image.shape[1] / height_ratio))
     else:
-        resize_width = width
-        resize_height = int(round(img.shape[0] / width_ratio))
+        new_width = target_width
+        new_height = int(round(image.shape[0] / width_ratio))
+    resized_image = transform.resize(image, (new_height, new_width),
+                                     mode='constant', anti_aliasing=True, preserve_range=True)
 
-    # Resize the image (will still be larger than new_size in one dimension)
-    img = transform.resize(img, (resize_height, resize_width),
-                           mode='constant', anti_aliasing=True, preserve_range=True)
-
-    img = img.astype(np.uint8)
-    # Crop to exactly the desired new_size, using the middle of the image:
+    resized_image = resized_image.astype(np.uint8)
     if width_ratio > height_ratio:
-        start = int(round((resize_width-width)/2.0))
-        return img[:, start:start + width]
+        start_x = int(round((new_width - target_width) / 2.0))
+        return resized_image[:, start_x:start_x + target_width]
     else:
-        start = int(round((resize_height-height)/2.0))
-        return img[start:start + height, :]
-    
-def crop_center(img: np.ndarray,
-                size: Tuple[int, int]) -> np.ndarray:
-    img_shape = img.shape
-    start_y = (img_shape[0] - size[0]) // 2
-    start_x = (img_shape[1] - size[1]) // 2
-    cropped = img[start_y: start_y + size[0], start_x:start_x + size[1]]
-    return cropped
+        start_y = int(round((new_height - target_height) / 2.0))
+        return resized_image[start_y:start_y + target_height, :]
 
-def crop_center_multiple(imgs: np.ndarray,
-                         size: Tuple[int, int]) -> np.ndarray:
-    img_shape = imgs.shape[2:]
-    start_y = (img_shape[0] - size[0]) // 2
-    start_x = (img_shape[1] - size[1]) // 2
-    cropped = imgs[:, :, start_y: start_y + size[0], start_x:start_x + size[1]]
-    return cropped
+def center_crop(image: np.ndarray, dimensions: Tuple[int, int]) -> np.ndarray:
+    img_height, img_width = image.shape
+    crop_height, crop_width = dimensions
+    start_y = (img_height - crop_height) // 2
+    start_x = (img_width - crop_width) // 2
+    cropped_image = image[start_y:start_y + crop_height, start_x:start_x + crop_width]
+    return cropped_image
 
-# Define the model and preprocessing functions within the Flask app
-def preprocess_signature(img: np.ndarray,
-                         canvas_size: Tuple[int, int],
-                         img_size: Tuple[int, int] =(170, 242),
-                         input_size: Tuple[int, int] =(150, 220)) -> np.ndarray:
-    ''' img - signature image
-        canvas_size - size of the canvas img will be placed on. Should be greater than img size
-        img_size - size to rescale signature
-        input_size - crop the center of image
-    '''
-    img = img.astype(np.uint8)
-    centered = normalize_image(img, canvas_size)
-    inverted = 255 - centered
-    resized = resize_image(inverted, img_size)
+def crop_center_multiple(images: np.ndarray, dimensions: Tuple[int, int]) -> np.ndarray:
+    img_height, img_width = images.shape[2:]
+    crop_height, crop_width = dimensions
+    start_y = (img_height - crop_height) // 2
+    start_x = (img_width - crop_width) // 2
+    cropped_images = images[:, :, start_y:start_y + crop_height, start_x:start_x + crop_width]
+    return cropped_images
 
-    if input_size is not None and input_size != img_size:
-        cropped = crop_center(resized, input_size)
-    else:
-        cropped = resized
+def remove_image_background(image: np.ndarray) -> np.ndarray:
+    image = image.astype(np.uint8)
+    threshold_value = filters.threshold_otsu(image)
+    image[image > threshold_value] = 255
+    return image
 
-    return cropped
 
 def decode_image(data_uri):
     """Decode a base64 string to a grayscale image."""
@@ -164,94 +135,90 @@ def decode_image(data_uri):
     image = io.imread(BytesIO(binary_data), as_gray=True)
     return img_as_ubyte(image)
 
+
 class SigNet(nn.Module):
     def __init__(self):
         super(SigNet, self).__init__()
-
         self.feature_space_size = 2048
-
-        self.conv_layers = nn.Sequential(OrderedDict([
-            ('conv1', conv_bn_mish(1, 96, 11, stride=4)),
-            ('maxpool1', nn.MaxPool2d(3, 2)),
-            ('conv2', conv_bn_mish(96, 256, 5, pad=2)),
-            ('maxpool2', nn.MaxPool2d(3, 2)),
-            ('conv3', conv_bn_mish(256, 384, 3, pad=1)),
-            ('conv4', conv_bn_mish(384, 384, 3, pad=1)),
-            ('conv5', conv_bn_mish(384, 256, 3, pad=1)),
-            ('maxpool3', nn.MaxPool2d(3, 2)),
-        ]))
-
-        self.fc_layers = nn.Sequential(OrderedDict([
-            ('fc1', linear_bn_mish(256 * 3 * 5, 2048)),
-            ('fc2', linear_bn_mish(self.feature_space_size, self.feature_space_size)),
-        ]))
+        self.conv_layers = nn.Sequential(
+            nn.Sequential(OrderedDict([
+                ('conv', nn.Conv2d(1, 96, 11, stride=4, padding=0, bias=False)),
+                ('bn', nn.BatchNorm2d(96)),
+                ('mish', nn.Mish())
+            ])),
+            nn.Sequential(OrderedDict([
+                ('conv', nn.Conv2d(96, 256, 5, stride=1, padding=2, bias=False)),
+                ('bn', nn.BatchNorm2d(256)),
+                ('mish', nn.Mish())
+            ])),
+            nn.Sequential(OrderedDict([
+                ('conv', nn.Conv2d(256, 384, 3, stride=1, padding=1, bias=False)),
+                ('bn', nn.BatchNorm2d(384)),
+                ('mish', nn.Mish())
+            ])),
+            nn.Sequential(OrderedDict([
+                ('conv', nn.Conv2d(384, 384, 3, stride=1, padding=1, bias=False)),
+                ('bn', nn.BatchNorm2d(384)),
+                ('mish', nn.Mish())
+            ])),
+            nn.Sequential(OrderedDict([
+                ('conv', nn.Conv2d(384, 256, 3, stride=1, padding=1, bias=False)),
+                ('bn', nn.BatchNorm2d(256)),
+                ('mish', nn.Mish())
+            ]))
+        )
+        self.fc_layers = nn.Sequential(
+            nn.Sequential(OrderedDict([
+                ('fc', nn.Linear(256 * 3 * 5, 2048, bias=False)),
+                ('bn', nn.BatchNorm1d(2048)),
+                ('mish', nn.Mish())
+            ])),
+            nn.Sequential(OrderedDict([
+                ('fc', nn.Linear(2048, 2048, bias=False)),
+                ('bn', nn.BatchNorm1d(2048)),
+                ('mish', nn.Mish())
+            ]))
+        )
 
     def forward_once(self, img):
         x = self.conv_layers(img)
-        x = x.view(x.shape[0], 256 * 3 * 5)
+        x = x.view(x.size(0), -1)
         x = self.fc_layers(x)
         return x
 
     def forward(self, img1, img2):
-
-        # Inputs need to have 4 dimensions (batch x channels x height x width), and also be between [0, 1]
-        img1 = img1.view(-1, 1, 150, 220).float().div(255)
-        img2 = img2.view(-1, 1, 150, 220).float().div(255)
-        # forward pass of input 1
+        img1 = img1.view(-1, 1, 150, 220).float() / 255.0
+        img2 = img2.view(-1, 1, 150, 220).float() / 255.0
         output1 = self.forward_once(img1)
-        # forward pass of input 2
         output2 = self.forward_once(img2)
         return output1, output2
 
-def conv_bn_mish(in_channels, out_channels, kernel_size,  stride=1, pad=0):
-    return nn.Sequential(OrderedDict([
-        ('conv', nn.Conv2d(in_channels, out_channels, kernel_size, stride, pad, bias=False)),
-        ('bn', nn.BatchNorm2d(out_channels)),
-        ('mish', nn.Mish()),
-    ]))
-
-
-def linear_bn_mish(in_features, out_features):
-    return nn.Sequential(OrderedDict([
-        ('fc', nn.Linear(in_features, out_features, bias=False)),  # Bias is added after BN
-        ('bn', nn.BatchNorm1d(out_features)),
-        ('mish', nn.Mish()),
-    ]))
 
 class SiameseModel(nn.Module):
     def __init__(self):
         super(SiameseModel, self).__init__()
 
         self.model = SigNet()
-        state_dict, _, _ = torch.load("../single_model.pth")
-        self.model.load_state_dict(state_dict)
-
-        self.probs = nn.Linear(4, 1)
-        self.projection2d = nn.Linear(self.model.feature_space_size, 2)
+        self.prob_layer = nn.Linear(4, 1)
+        self.projection_layer = nn.Linear(self.model.feature_space_size, 2)
 
     def forward_once(self, img):
-        x = self.model.forward_once(img)
-        return x
+        return self.model.forward_once(img)
 
     def forward(self, img1, img2):
+        img1 = img1.view(-1, 1, 150, 220).float() / 255.0
+        img2 = img2.view(-1, 1, 150, 220).float() / 255.0
 
-        # Inputs need to have 4 dimensions (batch x channels x height x width), and also be between [0, 1]
-        # forward pass of input 1
-        img1 = img1.view(-1, 1, 150, 220).float().div(255)
-        img2 = img2.view(-1, 1, 150, 220).float().div(255)
         embedding1 = self.forward_once(img1)
-        # forward pass of input 2
         embedding2 = self.forward_once(img2)
 
-            #print("Project embeddings into 2d space")
-        embedding1 = self.projection2d(embedding1)
-        embedding2 = self.projection2d(embedding2)
-            # Classification
-        output = torch.cat([embedding1, embedding2], dim=1)
-        output= self.probs(output)
+        embedding1 = self.projection_layer(embedding1)
+        embedding2 = self.projection_layer(embedding2)
 
-        return embedding1, embedding2, output
-    
+        combined_output = torch.cat([embedding1, embedding2], dim=1)
+        similarity_score = self.prob_layer(combined_output)
+
+        return embedding1, embedding2, similarity_score
 
 # Load your trained model
 model = SiameseModel()
