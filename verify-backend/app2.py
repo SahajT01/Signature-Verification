@@ -223,7 +223,7 @@ class SiameseModel(nn.Module):
         super(SiameseModel, self).__init__()
 
         self.model = SigNet()
-        state_dict, _, _ = torch.load("signet.pth")
+        state_dict, _, _ = torch.load("../single_model.pth")
         self.model.load_state_dict(state_dict)
 
         self.probs = nn.Linear(4, 1)
@@ -255,8 +255,7 @@ class SiameseModel(nn.Module):
 
 # Load your trained model
 model = SiameseModel()
-# model.load_state_dict(torch.load("signet.pth", map_location='cpu'))  # Adjust the path as necessary
-model.load_state_dict(torch.load('best_model_21.pt')['model'])
+model.load_state_dict(torch.load('../best_model_21.pt')['model'])
 model.eval()
 model.to('cpu')
 
@@ -334,7 +333,11 @@ def verify_signature():
 
         # Define a threshold for classification
         threshold = 0.9  # Adjust based on model behavior and validation
-        classification = 'Genuine' if cos_sim > threshold else 'Forged'
+        if cos_sim > threshold and confidence > 0.5:
+            classification = 'Genuine'
+        else:
+            classification = 'Forged'
+        #classification = 'Genuine' if cos_sim > threshold else 'Forged'
         return jsonify({'similarity': f"{cos_sim * 100:.2f}%", 'classification': classification, 'confidence': confidence})
 
     except Exception as e:

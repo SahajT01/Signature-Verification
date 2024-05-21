@@ -150,7 +150,7 @@ class SiameseModel(nn.Module):
         super(SiameseModel, self).__init__()
 
         self.model = SigNet()
-        state_dict, _, _ = torch.load("signet.pth")
+        state_dict, _, _ = torch.load("../single_model.pth")
         self.model.load_state_dict(state_dict)
         
         self.probs = nn.Linear(4, 1)
