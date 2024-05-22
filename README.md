@@ -2,7 +2,7 @@
 # Signature Verification Project
 
 ## Link to our Saved Model 
-https://drive.google.com/file/d/1vhKQx_Ica7oNLSOdSrcOKVOBQXdBpZ3r/view?usp=sharing
+https://drive.google.com/drive/folders/1QzxPZWe_xECJqVy5VayDeSu-ywYhMdAi?usp=sharing
 
 ## Introduction
 
